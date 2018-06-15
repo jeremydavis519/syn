@@ -68,8 +68,8 @@
 //!
 //! ```toml
 //! [dependencies]
-//! syn = "0.13"
-//! quote = "0.5"
+//! syn = "0.14"
+//! quote = "0.6"
 //!
 //! [lib]
 //! proc-macro = true
@@ -258,12 +258,23 @@
 //!   dynamic library libproc_macro from rustc toolchain.
 
 // Syn types in rustdoc of other crates get linked to here.
-#![doc(html_root_url = "https://docs.rs/syn/0.13.4")]
+#![doc(html_root_url = "https://docs.rs/syn/0.14.2")]
+#![cfg_attr(feature = "cargo-clippy", deny(clippy, clippy_pedantic))]
+// Ignored clippy lints.
 #![cfg_attr(
     feature = "cargo-clippy",
     allow(
         const_static_lifetime, doc_markdown, large_enum_variant, match_bool, redundant_closure,
         needless_pass_by_value, redundant_field_names
+    )
+)]
+// Ignored clippy_pedantic lints.
+#![cfg_attr(
+    feature = "cargo-clippy",
+    allow(
+        cast_possible_truncation, cast_possible_wrap, if_not_else, items_after_statements,
+        similar_names, single_match_else, stutter, unseparated_literal_suffix, use_self,
+        used_underscore_binding
     )
 )]
 
@@ -286,6 +297,8 @@ mod macros;
 #[macro_use]
 pub mod token;
 
+pub use proc_macro2::Ident;
+
 #[cfg(any(feature = "full", feature = "derive"))]
 mod attr;
 #[cfg(any(feature = "full", feature = "derive"))]
@@ -294,49 +307,53 @@ pub use attr::{AttrStyle, Attribute, Meta, MetaList, MetaNameValue, NestedMeta};
 #[cfg(any(feature = "full", feature = "derive"))]
 mod data;
 #[cfg(any(feature = "full", feature = "derive"))]
-pub use data::{Field, Fields, FieldsNamed, FieldsUnnamed, Variant, VisCrate, VisPublic,
-               VisRestricted, Visibility};
+pub use data::{
+    Field, Fields, FieldsNamed, FieldsUnnamed, Variant, VisCrate, VisPublic, VisRestricted,
+    Visibility,
+};
 
 #[cfg(any(feature = "full", feature = "derive"))]
 mod expr;
 #[cfg(any(feature = "full", feature = "derive"))]
-pub use expr::{Expr, ExprArray, ExprAssign, ExprAssignOp, ExprBinary, ExprBlock, ExprBox,
-               ExprBreak, ExprCall, ExprCast, ExprCatch, ExprClosure, ExprContinue, ExprField,
-               ExprForLoop, ExprGroup, ExprIf, ExprIfLet, ExprInPlace, ExprIndex, ExprLit,
-               ExprLoop, ExprMacro, ExprMatch, ExprMethodCall, ExprParen, ExprPath, ExprRange,
-               ExprReference, ExprRepeat, ExprReturn, ExprStruct, ExprTry, ExprTuple, ExprType,
-               ExprUnary, ExprUnsafe, ExprVerbatim, ExprWhile, ExprWhileLet, ExprYield, Index,
-               Member};
+pub use expr::{
+    Expr, ExprArray, ExprAssign, ExprAssignOp, ExprBinary, ExprBlock, ExprBox, ExprBreak, ExprCall,
+    ExprCast, ExprCatch, ExprClosure, ExprContinue, ExprField, ExprForLoop, ExprGroup, ExprIf,
+    ExprIfLet, ExprInPlace, ExprIndex, ExprLit, ExprLoop, ExprMacro, ExprMatch, ExprMethodCall,
+    ExprParen, ExprPath, ExprRange, ExprReference, ExprRepeat, ExprReturn, ExprStruct, ExprTry,
+    ExprTuple, ExprType, ExprUnary, ExprUnsafe, ExprVerbatim, ExprWhile, ExprWhileLet, ExprYield,
+    Index, Member,
+};
 
 #[cfg(feature = "full")]
-pub use expr::{Arm, Block, FieldPat, FieldValue, GenericMethodArgument, Label, Local,
-               MethodTurbofish, Pat, PatBox, PatIdent, PatLit, PatMacro, PatPath, PatRange,
-               PatRef, PatSlice, PatStruct, PatTuple, PatTupleStruct, PatVerbatim, PatWild,
-               RangeLimits, Stmt};
+pub use expr::{
+    Arm, Block, FieldPat, FieldValue, GenericMethodArgument, Label, Local, MethodTurbofish, Pat,
+    PatBox, PatIdent, PatLit, PatMacro, PatPath, PatRange, PatRef, PatSlice, PatStruct, PatTuple,
+    PatTupleStruct, PatVerbatim, PatWild, RangeLimits, Stmt,
+};
 
 #[cfg(any(feature = "full", feature = "derive"))]
 mod generics;
 #[cfg(any(feature = "full", feature = "derive"))]
-pub use generics::{BoundLifetimes, ConstParam, GenericParam, Generics, LifetimeDef, PredicateEq,
-                   PredicateLifetime, PredicateType, TraitBound, TraitBoundModifier, TypeParam,
-                   TypeParamBound, WhereClause, WherePredicate};
+pub use generics::{
+    BoundLifetimes, ConstParam, GenericParam, Generics, LifetimeDef, PredicateEq,
+    PredicateLifetime, PredicateType, TraitBound, TraitBoundModifier, TypeParam, TypeParamBound,
+    WhereClause, WherePredicate,
+};
 #[cfg(all(any(feature = "full", feature = "derive"), feature = "printing"))]
 pub use generics::{ImplGenerics, Turbofish, TypeGenerics};
-
-mod ident;
-pub use ident::Ident;
 
 #[cfg(feature = "full")]
 mod item;
 #[cfg(feature = "full")]
-pub use item::{ArgCaptured, ArgSelf, ArgSelfRef, FnArg, FnDecl, ForeignItem, ForeignItemFn,
-               ForeignItemStatic, ForeignItemType, ForeignItemVerbatim, ImplItem, ImplItemConst,
-               ImplItemMacro, ImplItemMethod, ImplItemType, ImplItemVerbatim, Item, ItemConst,
-               ItemEnum, ItemExternCrate, ItemFn, ItemForeignMod, ItemImpl, ItemMacro, ItemMacro2,
-               ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemType, ItemUnion, ItemUse,
-               ItemVerbatim, MethodSig, TraitItem, TraitItemConst, TraitItemMacro,
-               TraitItemMethod, TraitItemType, TraitItemVerbatim, UseGlob, UseGroup, UseName,
-               UsePath, UseRename, UseTree};
+pub use item::{
+    ArgCaptured, ArgSelf, ArgSelfRef, FnArg, FnDecl, ForeignItem, ForeignItemFn, ForeignItemStatic,
+    ForeignItemType, ForeignItemVerbatim, ImplItem, ImplItemConst, ImplItemMacro, ImplItemMethod,
+    ImplItemType, ImplItemVerbatim, Item, ItemConst, ItemEnum, ItemExternCrate, ItemFn,
+    ItemForeignMod, ItemImpl, ItemMacro, ItemMacro2, ItemMod, ItemStatic, ItemStruct, ItemTrait,
+    ItemType, ItemUnion, ItemUse, ItemVerbatim, MethodSig, TraitItem, TraitItemConst,
+    TraitItemMacro, TraitItemMethod, TraitItemType, TraitItemVerbatim, UseGlob, UseGroup, UseName,
+    UsePath, UseRename, UseTree,
+};
 
 #[cfg(feature = "full")]
 mod file;
@@ -351,8 +368,10 @@ pub use lifetime::Lifetime;
 #[cfg(any(feature = "full", feature = "derive"))]
 mod lit;
 #[cfg(any(feature = "full", feature = "derive"))]
-pub use lit::{FloatSuffix, IntSuffix, Lit, LitBool, LitByte, LitByteStr, LitChar, LitFloat,
-              LitInt, LitStr, LitVerbatim, StrStyle};
+pub use lit::{
+    FloatSuffix, IntSuffix, Lit, LitBool, LitByte, LitByteStr, LitChar, LitFloat, LitInt, LitStr,
+    LitVerbatim, StrStyle,
+};
 
 #[cfg(any(feature = "full", feature = "derive"))]
 mod mac;
@@ -372,17 +391,21 @@ pub use op::{BinOp, UnOp};
 #[cfg(any(feature = "full", feature = "derive"))]
 mod ty;
 #[cfg(any(feature = "full", feature = "derive"))]
-pub use ty::{Abi, BareFnArg, BareFnArgName, ReturnType, Type, TypeArray, TypeBareFn, TypeGroup,
-             TypeImplTrait, TypeInfer, TypeMacro, TypeNever, TypeParen, TypePath, TypePtr,
-             TypeReference, TypeSlice, TypeTraitObject, TypeTuple, TypeVerbatim};
+pub use ty::{
+    Abi, BareFnArg, BareFnArgName, ReturnType, Type, TypeArray, TypeBareFn, TypeGroup,
+    TypeImplTrait, TypeInfer, TypeMacro, TypeNever, TypeParen, TypePath, TypePtr, TypeReference,
+    TypeSlice, TypeTraitObject, TypeTuple, TypeVerbatim,
+};
 
 #[cfg(any(feature = "full", feature = "derive"))]
 mod path;
 #[cfg(all(any(feature = "full", feature = "derive"), feature = "printing"))]
 pub use path::PathTokens;
 #[cfg(any(feature = "full", feature = "derive"))]
-pub use path::{AngleBracketedGenericArguments, Binding, GenericArgument,
-               ParenthesizedGenericArguments, Path, PathArguments, PathSegment, QSelf};
+pub use path::{
+    AngleBracketedGenericArguments, Binding, GenericArgument, ParenthesizedGenericArguments, Path,
+    PathArguments, PathSegment, QSelf,
+};
 
 #[cfg(feature = "parsing")]
 pub mod buffer;
@@ -719,7 +742,7 @@ impl<'a, T> quote::ToTokens for TokensOrDefault<'a, T>
 where
     T: quote::ToTokens + Default,
 {
-    fn to_tokens(&self, tokens: &mut quote::Tokens) {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         match *self.0 {
             Some(ref t) => t.to_tokens(tokens),
             None => T::default().to_tokens(tokens),

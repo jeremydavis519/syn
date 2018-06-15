@@ -10,7 +10,7 @@ use proc_macro2::{Literal, Span};
 use std::str;
 
 #[cfg(feature = "printing")]
-use proc_macro2::Term;
+use proc_macro2::Ident;
 
 #[cfg(feature = "parsing")]
 use proc_macro2::TokenStream;
@@ -429,17 +429,17 @@ pub mod parsing {
                         Ok((Lit::new(lit), rest))
                     }
                 }
-                _ => match input.term() {
-                    Some((term, rest)) => Ok((
+                _ => match input.ident() {
+                    Some((ident, rest)) => Ok((
                         Lit::Bool(LitBool {
-                            value: if term.as_str() == "true" {
+                            value: if ident == "true" {
                                 true
-                            } else if term.as_str() == "false" {
+                            } else if ident == "false" {
                                 false
                             } else {
                                 return parse_error();
                             },
-                            span: term.span(),
+                            span: ident.span(),
                         }),
                         rest,
                     )),
@@ -506,53 +506,54 @@ pub mod parsing {
 #[cfg(feature = "printing")]
 mod printing {
     use super::*;
-    use quote::{ToTokens, Tokens};
+    use proc_macro2::TokenStream;
+    use quote::{ToTokens, TokenStreamExt};
 
     impl ToTokens for LitStr {
-        fn to_tokens(&self, tokens: &mut Tokens) {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
         }
     }
 
     impl ToTokens for LitByteStr {
-        fn to_tokens(&self, tokens: &mut Tokens) {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
         }
     }
 
     impl ToTokens for LitByte {
-        fn to_tokens(&self, tokens: &mut Tokens) {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
         }
     }
 
     impl ToTokens for LitChar {
-        fn to_tokens(&self, tokens: &mut Tokens) {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
         }
     }
 
     impl ToTokens for LitInt {
-        fn to_tokens(&self, tokens: &mut Tokens) {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
         }
     }
 
     impl ToTokens for LitFloat {
-        fn to_tokens(&self, tokens: &mut Tokens) {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
         }
     }
 
     impl ToTokens for LitBool {
-        fn to_tokens(&self, tokens: &mut Tokens) {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
             let s = if self.value { "true" } else { "false" };
-            tokens.append(Term::new(s, self.span));
+            tokens.append(Ident::new(s, self.span));
         }
     }
 
     impl ToTokens for LitVerbatim {
-        fn to_tokens(&self, tokens: &mut Tokens) {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
         }
     }

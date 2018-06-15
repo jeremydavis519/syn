@@ -16,12 +16,16 @@ use syn::*;
 extern crate quote;
 
 extern crate proc_macro2;
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::{Ident, Span, TokenStream};
 
 #[macro_use]
 mod macros;
 
 mod common;
+
+fn ident(s: &str) -> Ident {
+    Ident::new(s, Span::call_site())
+}
 
 #[test]
 fn test_split_for_impl() {
@@ -47,11 +51,11 @@ fn test_split_for_impl() {
                     bracket_token: Default::default(),
                     pound_token: Default::default(),
                     style: AttrStyle::Outer,
-                    path: "may_dangle".into(),
-                    tts: TokenStream::empty(),
+                    path: ident("may_dangle").into(),
+                    tts: TokenStream::new(),
                     is_sugared_doc: false,
                 }],
-                ident: "T".into(),
+                ident: ident("T"),
                 bounds: punctuated![TypeParamBound::Lifetime(Lifetime::new(
                     "'a",
                     Span::call_site()
@@ -73,13 +77,13 @@ fn test_split_for_impl() {
                 colon_token: Default::default(),
                 bounded_ty: TypePath {
                     qself: None,
-                    path: "T".into(),
+                    path: ident("T").into(),
                 }.into(),
                 bounds: punctuated![TypeParamBound::Trait(TraitBound {
                     paren_token: None,
                     modifier: TraitBoundModifier::None,
                     lifetimes: None,
-                    path: "Debug".into(),
+                    path: ident("Debug").into(),
                 }),],
             }),],
         }),
@@ -114,6 +118,7 @@ fn test_ty_param_bound() {
     );
 
     let tokens = quote!('_);
+    println!("{:?}", tokens);
     let expected = TypeParamBound::Lifetime(Lifetime::new("'_", Span::call_site()));
     assert_eq!(
         expected,
@@ -125,7 +130,7 @@ fn test_ty_param_bound() {
         paren_token: None,
         modifier: TraitBoundModifier::None,
         lifetimes: None,
-        path: "Debug".into(),
+        path: ident("Debug").into(),
     });
     assert_eq!(
         expected,
@@ -137,10 +142,34 @@ fn test_ty_param_bound() {
         paren_token: None,
         modifier: TraitBoundModifier::Maybe(Default::default()),
         lifetimes: None,
-        path: "Sized".into(),
+        path: ident("Sized").into(),
     });
     assert_eq!(
         expected,
         common::parse::syn::<TypeParamBound>(tokens.into())
     );
+}
+
+#[test]
+fn test_fn_precedence_in_where_clause() {
+    // This should parse as two separate bounds, `FnOnce() -> i32` and `Send` - not `FnOnce() -> (i32 + Send)`.
+    let sig = quote! {
+        fn f<G>()
+        where
+            G: FnOnce() -> i32 + Send,
+        {
+        }
+    };
+    let fun = common::parse::syn::<ItemFn>(sig.into());
+    let where_clause = fun.decl.generics.where_clause.as_ref().unwrap();
+    assert_eq!(where_clause.predicates.len(), 1);
+    let predicate = match where_clause.predicates[0] {
+        WherePredicate::Type(ref pred) => pred,
+        _ => panic!("wrong predicate kind"),
+    };
+    assert_eq!(predicate.bounds.len(), 2, "{:#?}", predicate.bounds);
+    let first_bound = &predicate.bounds[0];
+    assert_eq!(quote!(#first_bound).to_string(), "FnOnce ( ) -> i32");
+    let second_bound = &predicate.bounds[1];
+    assert_eq!(quote!(#second_bound).to_string(), "Send");
 }
