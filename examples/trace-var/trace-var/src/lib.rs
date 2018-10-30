@@ -1,41 +1,33 @@
-#![feature(proc_macro)]
-
 extern crate proc_macro;
+use self::proc_macro::TokenStream;
 
-#[macro_use]
-extern crate syn;
-
-#[macro_use]
-extern crate quote;
-
-use proc_macro::TokenStream;
-use quote::ToTokens;
+use quote::{quote, ToTokens};
 use std::collections::HashSet as Set;
 use syn::fold::{self, Fold};
+use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
-use syn::synom::Synom;
-use syn::{Expr, Ident, ItemFn, Local, Pat, Stmt};
+use syn::{parse_macro_input, parse_quote, Expr, Ident, ItemFn, Local, Pat, Stmt, Token};
 
-/// Parses a parenthesized nonempty list of variable names separated by commas.
+/// Parses a list of variable names separated by commas.
 ///
-///     (a, b, c)
+///     a, b, c
 ///
 /// This is how the compiler passes in arguments to our attribute -- it is
-/// everything that comes after the attribute name.
+/// everything inside the delimiters after the attribute name.
 ///
 ///     #[trace_var(a, b, c)]
-///                ^^^^^^^^^
+///                 ^^^^^^^
 struct Args {
     vars: Set<Ident>,
 }
 
-impl Synom for Args {
-    named!(parse -> Self, map!(
-        call!(Punctuated::<Ident, Token![,]>::parse_terminated_nonempty),
-        |vars| Args {
+impl Parse for Args {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let vars = Punctuated::<Ident, Token![,]>::parse_terminated(input)?;
+        Ok(Args {
             vars: vars.into_iter().collect(),
-        }
-    ));
+        })
+    }
 }
 
 impl Args {
@@ -107,6 +99,7 @@ impl Args {
         };
         parse_quote! {
             let #pat #ty = {
+                #[allow(unused_mut)]
                 let #pat = #init;
                 println!(concat!(stringify!(#ident), " = {:?}"), #ident);
                 #ident
@@ -180,19 +173,14 @@ impl Fold for Args {
 /// ```
 #[proc_macro_attribute]
 pub fn trace_var(args: TokenStream, input: TokenStream) -> TokenStream {
-    // Return the input unchanged if it failed to parse. The compiler will show
-    // the right diagnostics.
-    let input: ItemFn = match syn::parse(input.clone()) {
-        Ok(input) => input,
-        Err(_) => return input,
-    };
+    let input = parse_macro_input!(input as ItemFn);
 
     // Parse the list of variables the user wanted to print.
-    let mut args: Args = syn::parse(args).unwrap();
+    let mut args = parse_macro_input!(args as Args);
 
     // Use a syntax tree traversal to transform the function body.
     let output = args.fold_item_fn(input);
 
     // Hand the resulting function body back to the compiler.
-    quote!(#output).into()
+    TokenStream::from(quote!(#output))
 }

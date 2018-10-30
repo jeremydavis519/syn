@@ -1,16 +1,13 @@
 #![recursion_limit = "128"]
-#![feature(proc_macro)]
+#![feature(proc_macro_diagnostic)]
 
-#[macro_use]
-extern crate syn;
-#[macro_use]
-extern crate quote;
 extern crate proc_macro;
+use self::proc_macro::TokenStream;
 
-use syn::{Visibility, Ident, Type, Expr};
-use syn::synom::Synom;
+use quote::{quote, quote_spanned};
+use syn::parse::{Parse, ParseStream, Result};
 use syn::spanned::Spanned;
-use proc_macro::TokenStream;
+use syn::{parse_macro_input, Expr, Ident, Token, Type, Visibility};
 
 /// Parses the following syntax, which aligns with the input of the real
 /// `lazy_static` crate.
@@ -31,24 +28,34 @@ struct LazyStatic {
     init: Expr,
 }
 
-impl Synom for LazyStatic {
-    named!(parse -> Self, do_parse!(
-        visibility: syn!(Visibility) >>
-        keyword!(static) >>
-        keyword!(ref) >>
-        name: syn!(Ident) >>
-        punct!(:) >>
-        ty: syn!(Type) >>
-        punct!(=) >>
-        init: syn!(Expr) >>
-        punct!(;) >>
-        (LazyStatic { visibility, name, ty, init })
-    ));
+impl Parse for LazyStatic {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let visibility: Visibility = input.parse()?;
+        input.parse::<Token![static]>()?;
+        input.parse::<Token![ref]>()?;
+        let name: Ident = input.parse()?;
+        input.parse::<Token![:]>()?;
+        let ty: Type = input.parse()?;
+        input.parse::<Token![=]>()?;
+        let init: Expr = input.parse()?;
+        input.parse::<Token![;]>()?;
+        Ok(LazyStatic {
+            visibility,
+            name,
+            ty,
+            init,
+        })
+    }
 }
 
 #[proc_macro]
 pub fn lazy_static(input: TokenStream) -> TokenStream {
-    let LazyStatic { visibility, name, ty, init } = syn::parse(input).unwrap();
+    let LazyStatic {
+        visibility,
+        name,
+        ty,
+        init,
+    } = parse_macro_input!(input as LazyStatic);
 
     // The warning looks like this.
     //
@@ -58,7 +65,8 @@ pub fn lazy_static(input: TokenStream) -> TokenStream {
     //     10 |     static ref FOO: String = "lazy_static".to_owned();
     //        |                ^^^
     if name == "FOO" {
-        name.span().unstable()
+        name.span()
+            .unstable()
             .warning("come on, pick a more creative name")
             .emit();
     }
@@ -72,7 +80,8 @@ pub fn lazy_static(input: TokenStream) -> TokenStream {
     //        |                           ^^
     if let Expr::Tuple(ref init) = init {
         if init.elems.is_empty() {
-            init.span().unstable()
+            init.span()
+                .unstable()
                 .error("I can't think of a legitimate use for lazily initializing the value `()`")
                 .emit();
             return TokenStream::new();
@@ -130,5 +139,5 @@ pub fn lazy_static(input: TokenStream) -> TokenStream {
         }
     };
 
-    expanded.into()
+    TokenStream::from(expanded)
 }

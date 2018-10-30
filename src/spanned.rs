@@ -29,17 +29,17 @@
 //! static assertion that `Sync` is implemented for that type.
 //!
 //! ```
+//! # extern crate proc_macro;
+//! # extern crate proc_macro2;
+//! # extern crate syn;
+//! #
 //! #[macro_use]
 //! extern crate quote;
 //!
-//! extern crate syn;
-//! extern crate proc_macro;
-//! extern crate proc_macro2;
-//!
-//! use syn::Type;
-//! use syn::spanned::Spanned;
 //! use proc_macro::TokenStream;
 //! use proc_macro2::Span;
+//! use syn::Type;
+//! use syn::spanned::Spanned;
 //!
 //! # const IGNORE_TOKENS: &str = stringify! {
 //! #[proc_macro_derive(MyMacro)]
@@ -85,9 +85,10 @@ use quote::ToTokens;
 /// tree node.
 ///
 /// This trait is automatically implemented for all types that implement
-/// [`ToTokens`] from the `quote` crate.
+/// [`ToTokens`] from the `quote` crate. It is sealed and cannot be implemented
+/// outside of the Syn crate other than by implementing `ToTokens`.
 ///
-/// [`ToTokens`]: https://docs.rs/quote/0.4/quote/trait.ToTokens.html
+/// [`ToTokens`]: https://docs.rs/quote/0.6/quote/trait.ToTokens.html
 ///
 /// See the [module documentation] for an example.
 ///
@@ -95,48 +96,63 @@ use quote::ToTokens;
 ///
 /// *This trait is available if Syn is built with both the `"parsing"` and
 /// `"printing"` features.*
-pub trait Spanned {
+pub trait Spanned: private::Sealed {
     /// Returns a `Span` covering the complete contents of this syntax tree
     /// node, or [`Span::call_site()`] if this node is empty.
     ///
-    /// [`Span::call_site()`]: https://docs.rs/proc-macro2/0.2/proc_macro2/struct.Span.html#method.call_site
+    /// [`Span::call_site()`]: https://docs.rs/proc-macro2/0.4/proc_macro2/struct.Span.html#method.call_site
     fn span(&self) -> Span;
+}
+
+mod private {
+    use quote::ToTokens;
+    pub trait Sealed {}
+    impl<T: ToTokens> Sealed for T {}
 }
 
 impl<T> Spanned for T
 where
     T: ToTokens,
 {
-    #[cfg(procmacro2_semver_exempt)]
     fn span(&self) -> Span {
-        let mut tokens = TokenStream::new();
-        self.to_tokens(&mut tokens);
-        let mut iter = tokens.into_iter();
-        let mut span = match iter.next() {
-            Some(tt) => tt.span(),
-            None => {
-                return Span::call_site();
-            }
-        };
-        for tt in iter {
-            if let Some(joined) = span.join(tt.span()) {
-                span = joined;
+        join_spans(self.into_token_stream())
+    }
+}
+
+fn join_spans(tokens: TokenStream) -> Span {
+    let mut iter = tokens.into_iter().filter_map(|tt| {
+        // FIXME: This shouldn't be required, since optimally spans should
+        // never be invalid. This filter_map can probably be removed when
+        // https://github.com/rust-lang/rust/issues/43081 is resolved.
+        let span = tt.span();
+        let debug = format!("{:?}", span);
+        if debug.ends_with("bytes(0..0)") {
+            None
+        } else {
+            Some(span)
+        }
+    });
+
+    let mut joined = match iter.next() {
+        Some(span) => span,
+        None => return Span::call_site(),
+    };
+
+    #[cfg(procmacro2_semver_exempt)]
+    {
+        for next in iter {
+            if let Some(span) = joined.join(next) {
+                joined = span;
             }
         }
-        span
     }
 
     #[cfg(not(procmacro2_semver_exempt))]
-    fn span(&self) -> Span {
-        let mut tokens = TokenStream::new();
-        self.to_tokens(&mut tokens);
-        let mut iter = tokens.into_iter();
-
+    {
         // We can't join spans without procmacro2_semver_exempt so just grab the
         // first one.
-        match iter.next() {
-            Some(tt) => tt.span(),
-            None => Span::call_site(),
-        }
+        joined = joined;
     }
+
+    joined
 }

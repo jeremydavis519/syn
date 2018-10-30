@@ -11,6 +11,4 @@ quote = "0.6"
 failure = "0.1"
 inflections = "1.1"
 proc-macro2 = "0.4"
-
-[patch.crates-io]
-quote = { git = 'https://github.com/dtolnay/quote' }
+rustfmt-nightly = { git = "https://github.com/rust-lang-nursery/rustfmt" }

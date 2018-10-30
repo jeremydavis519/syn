@@ -17,22 +17,8 @@ use std::process::Command;
 
 use self::walkdir::DirEntry;
 
+pub mod eq;
 pub mod parse;
-pub mod respan;
-
-pub fn check_min_stack() {
-    let min_stack_value = match env::var("RUST_MIN_STACK") {
-        Ok(s) => s,
-        Err(_) => {
-            env::set_var("RUST_MIN_STACK", 16000000.to_string());
-            return;
-        }
-    };
-    let min_stack_value: usize = min_stack_value
-        .parse()
-        .expect("RUST_MIN_STACK env var should be set since some tests require it.");
-    assert!(min_stack_value >= 16_000_000);
-}
 
 /// Read the `ABORT_AFTER_FAILURE` environment variable, and parse it.
 pub fn abort_after() -> usize {
@@ -59,6 +45,7 @@ pub fn base_dir_filter(entry: &DirEntry) -> bool {
     // TODO assert that parsing fails on the parse-fail cases
     if path_string.starts_with("tests/rust/src/test/parse-fail")
         || path_string.starts_with("tests/rust/src/test/compile-fail")
+        || path_string.starts_with("tests/rust/src/test/rustfix")
     {
         return false;
     }
@@ -72,27 +59,13 @@ pub fn base_dir_filter(entry: &DirEntry) -> bool {
     }
 
     match path_string.as_ref() {
-        // TODO better support for attributes
-        //
-        //      { #![foo] }
-        "tests/rust/src/test/pretty/stmt_expr_attributes.rs" |
-        // TODO better support for attributes
-        "tests/rust/src/test/run-pass/cfg_stmt_expr.rs" |
-        // TODO better support for attributes
-        "tests/rust/src/test/run-pass/item-attributes.rs" |
         // Deprecated placement syntax
         "tests/rust/src/test/run-pass/new-box-syntax.rs" |
-        // Deprecated placement syntax
-        "tests/rust/src/test/run-pass/placement-in-syntax.rs" |
-        // TODO inclusive range syntax
-        "tests/rust/src/test/run-pass/range-inclusive-pattern-precedence.rs" |
-        // TODO feature(extern_in_paths)
-        //
-        //      use extern::xcrate;
-        "tests/rust/src/test/run-pass/rfc-2126-extern-absolute-paths/extern.rs" |
+        "tests/rust/src/test/ui/obsolete-in-place/bad.rs" |
         // not actually test cases
-        "tests/rust/src/test/run-pass/auxiliary/macro-comma-support.rs" |
-        "tests/rust/src/test/run-pass/auxiliary/macro-include-items-expr.rs" => false,
+        "tests/rust/src/test/run-pass/macros/auxiliary/macro-comma-support.rs" |
+        "tests/rust/src/test/run-pass/macros/auxiliary/macro-include-items-expr.rs" |
+        "tests/rust/src/test/ui/issues/auxiliary/issue-21146-inc.rs" => false,
         _ => true,
     }
 }

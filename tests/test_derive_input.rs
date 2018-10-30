@@ -13,6 +13,7 @@ extern crate syn;
 
 use proc_macro2::Delimiter::{Brace, Parenthesis};
 use proc_macro2::*;
+use syn::punctuated::Punctuated;
 use syn::*;
 
 use std::iter::FromIterator;
@@ -83,7 +84,6 @@ fn test_struct() {
                 Parenthesis,
                 vec![word("Debug"), op(','), word("Clone")],
             )]),
-            is_sugared_doc: false,
         }],
         generics: Generics::default(),
         data: Data::Struct(DataStruct {
@@ -102,7 +102,8 @@ fn test_struct() {
                         ty: TypePath {
                             qself: None,
                             path: ident("Ident").into(),
-                        }.into(),
+                        }
+                        .into(),
                     },
                     Field {
                         ident: Some(ident("attrs")),
@@ -132,7 +133,8 @@ fn test_struct() {
                                     ),
                                 },],
                             },
-                        }.into(),
+                        }
+                        .into(),
                     },
                 ],
             }),
@@ -150,12 +152,76 @@ fn test_struct() {
             NestedMeta::Meta(Meta::Word(ident("Debug"))),
             NestedMeta::Meta(Meta::Word(ident("Clone"))),
         ],
-    }.into();
+    }
+    .into();
 
     assert_eq!(
         expected_meta_item,
         actual.attrs[0].interpret_meta().unwrap()
     );
+}
+
+#[test]
+fn test_union() {
+    let raw = "
+        union MaybeUninit<T> {
+            uninit: (),
+            value: T
+        }
+    ";
+
+    let expected = DeriveInput {
+        ident: ident("MaybeUninit"),
+        vis: Visibility::Inherited,
+        attrs: Vec::new(),
+        generics: Generics {
+            lt_token: Some(Default::default()),
+            params: punctuated![GenericParam::Type(TypeParam {
+                attrs: Vec::new(),
+                ident: ident("T"),
+                bounds: Default::default(),
+                default: None,
+                colon_token: None,
+                eq_token: None,
+            }),],
+            gt_token: Some(Default::default()),
+            where_clause: None,
+        },
+        data: Data::Union(DataUnion {
+            union_token: Default::default(),
+            fields: FieldsNamed {
+                brace_token: Default::default(),
+                named: punctuated![
+                    Field {
+                        ident: Some(ident("uninit")),
+                        colon_token: Some(Default::default()),
+                        vis: Visibility::Inherited,
+                        attrs: Vec::new(),
+                        ty: TypeTuple {
+                            paren_token: Default::default(),
+                            elems: Punctuated::new(),
+                        }
+                        .into(),
+                    },
+                    Field {
+                        ident: Some(ident("value")),
+                        colon_token: Some(Default::default()),
+                        vis: Visibility::Inherited,
+                        attrs: Vec::new(),
+                        ty: TypePath {
+                            qself: None,
+                            path: ident("T").into(),
+                        }
+                        .into(),
+                    },
+                ],
+            },
+        }),
+    };
+
+    let actual = syn::parse_str(raw).unwrap();
+
+    assert_eq!(expected, actual);
 }
 
 #[test]
@@ -192,7 +258,6 @@ fn test_enum() {
                         " See the std::result module documentation for details.",
                     )),
                 ]),
-                is_sugared_doc: false,
             },
             Attribute {
                 bracket_token: Default::default(),
@@ -200,7 +265,6 @@ fn test_enum() {
                 style: AttrStyle::Outer,
                 path: ident("must_use").into(),
                 tts: TokenStream::new(),
-                is_sugared_doc: false,
             },
         ],
         generics: Generics {
@@ -241,7 +305,8 @@ fn test_enum() {
                             ty: TypePath {
                                 qself: None,
                                 path: ident("T").into(),
-                            }.into(),
+                            }
+                            .into(),
                         },],
                     }),
                     discriminant: None,
@@ -259,7 +324,8 @@ fn test_enum() {
                             ty: TypePath {
                                 qself: None,
                                 path: ident("E").into(),
-                            }.into(),
+                            }
+                            .into(),
                         },],
                     }),
                     discriminant: None,
@@ -328,7 +394,8 @@ fn test_enum() {
                 " See the std::result module documentation for details.",
                 Span::call_site(),
             )),
-        }.into(),
+        }
+        .into(),
         Meta::Word(ident("must_use")),
     ];
 
@@ -385,7 +452,6 @@ fn test_attr_with_path() {
                     ],
                 ),
             ]),
-            is_sugared_doc: false,
         }],
         generics: Generics::default(),
         data: Data::Struct(DataStruct {
@@ -421,7 +487,6 @@ fn test_attr_with_non_mod_style_path() {
                 segments: punctuated![PathSegment::from(ident("inert"))],
             },
             tts: TokenStream::from_iter(vec![op('<'), word("T"), op('>')]),
-            is_sugared_doc: false,
         }],
         generics: Generics::default(),
         data: Data::Struct(DataStruct {
@@ -460,7 +525,6 @@ fn test_attr_with_mod_style_path_with_self() {
                 ],
             },
             tts: TokenStream::new(),
-            is_sugared_doc: false,
         }],
         generics: Generics::default(),
         data: Data::Struct(DataStruct {
@@ -516,7 +580,8 @@ fn test_pub_restricted() {
                     ty: TypePath {
                         qself: None,
                         path: ident("u8").into(),
-                    }.into(),
+                    }
+                    .into(),
                 },],
             }),
             semi_token: Some(Default::default()),
@@ -712,4 +777,41 @@ fn test_fields_on_tuple_struct() {
     let expected = expected.iter().collect::<Vec<_>>();
 
     assert_eq!(expected, struct_body.fields.iter().collect::<Vec<_>>());
+}
+
+#[test]
+fn test_ambiguous_crate() {
+    // The field type is `(crate::X)` not `crate (::X)`.
+    let raw = "struct S(crate::X);";
+
+    let expected = DeriveInput {
+        ident: ident("S"),
+        vis: Visibility::Inherited,
+        attrs: vec![],
+        generics: Generics::default(),
+        data: Data::Struct(DataStruct {
+            struct_token: Default::default(),
+            fields: Fields::Unnamed(FieldsUnnamed {
+                paren_token: Default::default(),
+                unnamed: punctuated![Field {
+                    attrs: Vec::new(),
+                    vis: Visibility::Inherited,
+                    ident: None,
+                    colon_token: None,
+                    ty: Type::Path(TypePath {
+                        qself: None,
+                        path: Path {
+                            leading_colon: None,
+                            segments: punctuated![ident("crate").into(), ident("X").into(),],
+                        },
+                    }),
+                }],
+            }),
+            semi_token: Some(Default::default()),
+        }),
+    };
+
+    let actual = syn::parse_str(raw).unwrap();
+
+    assert_eq!(expected, actual);
 }

@@ -1,7 +1,3 @@
-#[macro_use]
-extern crate heapsize_derive;
-
-extern crate heapsize;
 use heapsize::HeapSize;
 
 #[derive(HeapSize)]
@@ -21,10 +17,12 @@ fn main() {
     };
 
     // 10 + 0 + 0 + 6 = 16
-    println!("heap size = {} + {} + {} + {} = {}",
+    println!(
+        "heap size = {} + {} + {} + {} = {}",
         demo.a.heap_size_of_children(),
         demo.b.heap_size_of_children(),
         demo.c.heap_size_of_children(),
         demo.d.heap_size_of_children(),
-        demo.heap_size_of_children());
+        demo.heap_size_of_children()
+    );
 }

@@ -7,6 +7,7 @@
 // except according to those terms.
 
 #![cfg(feature = "extra-traits")]
+#![recursion_limit = "1024"]
 #![feature(rustc_private)]
 
 extern crate syn;
@@ -53,7 +54,6 @@ fn test_split_for_impl() {
                     style: AttrStyle::Outer,
                     path: ident("may_dangle").into(),
                     tts: TokenStream::new(),
-                    is_sugared_doc: false,
                 }],
                 ident: ident("T"),
                 bounds: punctuated![TypeParamBound::Lifetime(Lifetime::new(
@@ -64,7 +64,8 @@ fn test_split_for_impl() {
                     TypeTuple {
                         elems: Default::default(),
                         paren_token: Default::default(),
-                    }.into(),
+                    }
+                    .into(),
                 ),
                 colon_token: Some(Default::default()),
                 eq_token: Default::default(),
@@ -78,7 +79,8 @@ fn test_split_for_impl() {
                 bounded_ty: TypePath {
                     qself: None,
                     path: ident("T").into(),
-                }.into(),
+                }
+                .into(),
                 bounds: punctuated![TypeParamBound::Trait(TraitBound {
                     paren_token: None,
                     modifier: TraitBoundModifier::None,
@@ -112,18 +114,12 @@ fn test_split_for_impl() {
 fn test_ty_param_bound() {
     let tokens = quote!('a);
     let expected = TypeParamBound::Lifetime(Lifetime::new("'a", Span::call_site()));
-    assert_eq!(
-        expected,
-        common::parse::syn::<TypeParamBound>(tokens.into())
-    );
+    assert_eq!(expected, syn::parse2::<TypeParamBound>(tokens).unwrap());
 
     let tokens = quote!('_);
     println!("{:?}", tokens);
     let expected = TypeParamBound::Lifetime(Lifetime::new("'_", Span::call_site()));
-    assert_eq!(
-        expected,
-        common::parse::syn::<TypeParamBound>(tokens.into())
-    );
+    assert_eq!(expected, syn::parse2::<TypeParamBound>(tokens).unwrap());
 
     let tokens = quote!(Debug);
     let expected = TypeParamBound::Trait(TraitBound {
@@ -132,10 +128,7 @@ fn test_ty_param_bound() {
         lifetimes: None,
         path: ident("Debug").into(),
     });
-    assert_eq!(
-        expected,
-        common::parse::syn::<TypeParamBound>(tokens.into())
-    );
+    assert_eq!(expected, syn::parse2::<TypeParamBound>(tokens).unwrap());
 
     let tokens = quote!(?Sized);
     let expected = TypeParamBound::Trait(TraitBound {
@@ -144,10 +137,7 @@ fn test_ty_param_bound() {
         lifetimes: None,
         path: ident("Sized").into(),
     });
-    assert_eq!(
-        expected,
-        common::parse::syn::<TypeParamBound>(tokens.into())
-    );
+    assert_eq!(expected, syn::parse2::<TypeParamBound>(tokens).unwrap());
 }
 
 #[test]
@@ -160,7 +150,7 @@ fn test_fn_precedence_in_where_clause() {
         {
         }
     };
-    let fun = common::parse::syn::<ItemFn>(sig.into());
+    let fun = syn::parse2::<ItemFn>(sig).unwrap();
     let where_clause = fun.decl.generics.where_clause.as_ref().unwrap();
     assert_eq!(where_clause.predicates.len(), 1);
     let predicate = match where_clause.predicates[0] {
@@ -172,4 +162,13 @@ fn test_fn_precedence_in_where_clause() {
     assert_eq!(quote!(#first_bound).to_string(), "FnOnce ( ) -> i32");
     let second_bound = &predicate.bounds[1];
     assert_eq!(quote!(#second_bound).to_string(), "Send");
+}
+
+#[test]
+fn test_where_clause_at_end_of_input() {
+    let tokens = quote! {
+        where
+    };
+    let where_clause = syn::parse2::<WhereClause>(tokens).unwrap();
+    assert_eq!(where_clause.predicates.len(), 0);
 }

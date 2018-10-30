@@ -7,6 +7,7 @@
 // except according to those terms.
 
 #![cfg(all(feature = "full", feature = "fold"))]
+#![recursion_limit = "1024"]
 #![feature(rustc_private)]
 
 //! The tests in this module do the following:
@@ -17,17 +18,23 @@
 //!    methods).
 //! 3. Serialize the `syn` expression back into a string, and re-parse it with
 //!    `libsyntax`.
-//! 4. Respan all of the expressions, replacing the spans with the default spans.
+//! 4. Respan all of the expressions, replacing the spans with the default
+//!    spans.
 //! 5. Compare the expressions with one another, if they are not equal fail.
 
 #[macro_use]
 extern crate quote;
 extern crate rayon;
+extern crate regex;
+extern crate rustc_data_structures;
+#[macro_use]
+extern crate smallvec;
 extern crate syn;
 extern crate syntax;
 extern crate walkdir;
 
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use regex::Regex;
 use syntax::ast;
 use syntax::ptr::P;
 use walkdir::{DirEntry, WalkDir};
@@ -37,7 +44,8 @@ use std::io::Read;
 use std::process;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use common::{parse, respan};
+use common::eq::SpanlessEq;
+use common::parse;
 
 #[macro_use]
 mod macros;
@@ -86,7 +94,6 @@ fn test_simple_precedence() {
 /// Test expressions from rustc, like in `test_round_trip`.
 #[test]
 fn test_rustc_precedence() {
-    common::check_min_stack();
     common::clone_rust();
     let abort_after = common::abort_after();
     if abort_after == 0 {
@@ -95,6 +102,9 @@ fn test_rustc_precedence() {
 
     let passed = AtomicUsize::new(0);
     let failed = AtomicUsize::new(0);
+
+    // 2018 edition is hard
+    let edition_regex = Regex::new(r"\b(async|try)[!(]").unwrap();
 
     WalkDir::new("tests/rust")
         .sort_by(|a, b| a.file_name().cmp(b.file_name()))
@@ -121,6 +131,7 @@ fn test_rustc_precedence() {
             let mut file = File::open(path).unwrap();
             let mut content = String::new();
             file.read_to_string(&mut content).unwrap();
+            let content = edition_regex.replace_all(&content, "_$0");
 
             let (l_passed, l_failed) = match syn::parse_file(&content) {
                 Ok(file) => {
@@ -184,10 +195,7 @@ fn test_expressions(exprs: Vec<syn::Expr>) -> (usize, usize) {
                 continue;
             };
 
-            let syn_ast = respan::respan_expr(syn_ast);
-            let libsyntax_ast = respan::respan_expr(libsyntax_ast);
-
-            if syn_ast == libsyntax_ast {
+            if SpanlessEq::eq(&syn_ast, &libsyntax_ast) {
                 passed += 1;
             } else {
                 failed += 1;
@@ -204,42 +212,32 @@ fn libsyntax_parse_and_rewrite(input: &str) -> Option<P<ast::Expr>> {
 }
 
 /// Wrap every expression which is not already wrapped in parens with parens, to
-/// reveal the precidence of the parsed expressions, and produce a stringified form
-/// of the resulting expression.
+/// reveal the precidence of the parsed expressions, and produce a stringified
+/// form of the resulting expression.
 ///
 /// This method operates on libsyntax objects.
 fn libsyntax_brackets(libsyntax_expr: P<ast::Expr>) -> Option<P<ast::Expr>> {
+    use rustc_data_structures::thin_vec::ThinVec;
+    use smallvec::SmallVec;
     use syntax::ast::{Expr, ExprKind, Field, Mac, Pat, Stmt, StmtKind, Ty};
     use syntax::ext::quote::rt::DUMMY_SP;
     use syntax::fold::{self, Folder};
-    use syntax::util::small_vector::SmallVector;
-    use syntax::util::ThinVec;
-
-    fn expr(node: ExprKind) -> P<Expr> {
-        P(Expr {
-            id: ast::DUMMY_NODE_ID,
-            node,
-            span: DUMMY_SP,
-            attrs: ThinVec::new(),
-        })
-    }
 
     struct BracketsFolder {
         failed: bool,
     };
     impl Folder for BracketsFolder {
         fn fold_expr(&mut self, e: P<Expr>) -> P<Expr> {
-            e.map(|e| Expr {
-                node: match e.node {
-                    ExprKind::Paren(inner) => {
-                        ExprKind::Paren(inner.map(|e| fold::noop_fold_expr(e, self)))
-                    }
-                    ExprKind::If(..) | ExprKind::Block(..) | ExprKind::IfLet(..) => {
-                        return fold::noop_fold_expr(e, self);
-                    }
-                    node => ExprKind::Paren(expr(node).map(|e| fold::noop_fold_expr(e, self))),
+            e.map(|e| match e.node {
+                ExprKind::If(..) | ExprKind::Block(..) | ExprKind::IfLet(..) => {
+                    fold::noop_fold_expr(e, self)
+                }
+                _ => Expr {
+                    id: ast::DUMMY_NODE_ID,
+                    node: ExprKind::Paren(P(fold::noop_fold_expr(e, self))),
+                    span: DUMMY_SP,
+                    attrs: ThinVec::new(),
                 },
-                ..e
             })
         }
 
@@ -265,7 +263,7 @@ fn libsyntax_brackets(libsyntax_expr: P<ast::Expr>) -> Option<P<ast::Expr>> {
             ty
         }
 
-        fn fold_stmt(&mut self, stmt: Stmt) -> SmallVector<Stmt> {
+        fn fold_stmt(&mut self, stmt: Stmt) -> SmallVec<[Stmt; 1]> {
             let node = match stmt.node {
                 // Don't wrap toplevel expressions in statements.
                 StmtKind::Expr(e) => StmtKind::Expr(e.map(|e| fold::noop_fold_expr(e, self))),
@@ -273,7 +271,7 @@ fn libsyntax_brackets(libsyntax_expr: P<ast::Expr>) -> Option<P<ast::Expr>> {
                 s => s,
             };
 
-            SmallVector::one(Stmt { node, ..stmt })
+            smallvec![Stmt { node, ..stmt }]
         }
 
         fn fold_mac(&mut self, mac: Mac) -> Mac {
@@ -296,31 +294,25 @@ fn libsyntax_brackets(libsyntax_expr: P<ast::Expr>) -> Option<P<ast::Expr>> {
 }
 
 /// Wrap every expression which is not already wrapped in parens with parens, to
-/// reveal the precedence of the parsed expressions, and produce a stringified form
-/// of the resulting expression.
+/// reveal the precedence of the parsed expressions, and produce a stringified
+/// form of the resulting expression.
 fn syn_brackets(syn_expr: syn::Expr) -> syn::Expr {
     use syn::fold::*;
     use syn::*;
-
-    fn paren(folder: &mut ParenthesizeEveryExpr, mut node: Expr) -> Expr {
-        let attrs = node.replace_attrs(Vec::new());
-        Expr::Paren(ExprParen {
-            attrs,
-            expr: Box::new(fold_expr(folder, node)),
-            paren_token: token::Paren::default(),
-        })
-    }
 
     struct ParenthesizeEveryExpr;
     impl Fold for ParenthesizeEveryExpr {
         fn fold_expr(&mut self, expr: Expr) -> Expr {
             match expr {
                 Expr::Group(_) => unreachable!(),
-                Expr::Paren(p) => paren(self, *p.expr),
-                Expr::If(..) | Expr::Unsafe(..) | Expr::Block(..) | Expr::IfLet(..) => {
+                Expr::If(..) | Expr::Unsafe(..) | Expr::Block(..) | Expr::Let(..) => {
                     fold_expr(self, expr)
                 }
-                node => paren(self, node),
+                node => Expr::Paren(ExprParen {
+                    attrs: Vec::new(),
+                    expr: Box::new(fold_expr(self, node)),
+                    paren_token: token::Paren::default(),
+                }),
             }
         }
 
